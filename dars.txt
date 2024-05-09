@@ -1,41 +1,43 @@
 import os
-import json
 from pyspark.sql import SparkSession
 from datetime import datetime, timedelta
 
 # Define paths and file handling functions
 def get_processed_files_tracker_path():
-    return "/path/to/your/processed_files_tracker.json"
+    return "/path/to/your/processed_files_tracker.txt"
 
 def load_processed_files():
+    """Reads the text file that tracks processed files and returns a set of filenames."""
     path = get_processed_files_tracker_path()
     if os.path.exists(path):
         with open(path, 'r') as file:
-            return json.load(file)
-    return {}
+            return set(file.read().splitlines())  # Read lines and create a set of filenames
+    return set()
 
-def save_processed_files(data):
+def save_processed_files(processed_files):
+    """Writes the updated set of processed files back to the text file, each filename on a new line."""
     path = get_processed_files_tracker_path()
     with open(path, 'w') as file:
-        json.dump(data, file, indent=4)
+        file.write('\n'.join(processed_files))  # Join set into string with newline separator
 
-# Check if the file was already processed
+# File processing and checks
 def is_file_processed(file_name):
     processed_files = load_processed_files()
-    return processed_files.get(file_name, False)
+    return file_name in processed_files
 
 def mark_file_as_processed(file_name):
     processed_files = load_processed_files()
-    processed_files[file_name] = True
+    processed_files.add(file_name)
     save_processed_files(processed_files)
 
-# Fetch latest file information and process
 def get_latest_file_info(spark, hdfs_path):
     fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
     path = spark._jvm.org.apache.hadoop.fs.Path(hdfs_path)
     status = fs.listStatus(path)
-    files_with_times = [(file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
-                        for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")]
+    files_with_times = [
+        (file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
+        for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")
+    ]
     
     if not files_with_times:
         return None, None
@@ -45,12 +47,12 @@ def check_for_new_files(spark, hdfs_path):
     latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
     if not latest_file:
         return False
-    
+
     today = datetime.now().date()
     yesterday = today - timedelta(days=1)
     file_date_is_valid = latest_mod_time.date() in [today, yesterday]
     file_not_processed = not is_file_processed(latest_file)
-    
+
     if file_date_is_valid and file_not_processed:
         mark_file_as_processed(latest_file)
         return True
