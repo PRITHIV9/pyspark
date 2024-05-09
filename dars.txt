@@ -1,78 +1,69 @@
-0 * 1,12-16,27-31 * *
-from pyspark.sql import SparkSession
-from datetime import datetime, timedelta
 import os
 import json
+from pyspark.sql import SparkSession
+from datetime import datetime, timedelta
 
+# Define paths and file handling functions
 def get_processed_files_tracker_path():
-    """Returns the file path for storing the processed files' state."""
-    return "/path/to/your/processed_files.json"
+    return "/path/to/your/processed_files_tracker.json"
 
-def read_processed_files():
-    """Reads the JSON file that tracks processed files and returns a dictionary."""
+def load_processed_files():
     path = get_processed_files_tracker_path()
     if os.path.exists(path):
         with open(path, 'r') as file:
             return json.load(file)
     return {}
 
-def write_processed_files(processed_files):
-    """Writes the updated dictionary of processed files back to the JSON file."""
+def save_processed_files(data):
     path = get_processed_files_tracker_path()
     with open(path, 'w') as file:
-        json.dump(processed_files, file, indent=4)
+        json.dump(data, file, indent=4)
 
+# Check if the file was already processed
+def is_file_processed(file_name):
+    processed_files = load_processed_files()
+    return processed_files.get(file_name, False)
+
+def mark_file_as_processed(file_name):
+    processed_files = load_processed_files()
+    processed_files[file_name] = True
+    save_processed_files(processed_files)
+
+# Fetch latest file information and process
 def get_latest_file_info(spark, hdfs_path):
-    """
-    Fetches the latest file in the HDFS directory based on specific naming and modification time.
-    Filters for files starting with '72648' and ending with '.csv', and returns the most recently modified file.
-    """
     fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
     path = spark._jvm.org.apache.hadoop.fs.Path(hdfs_path)
     status = fs.listStatus(path)
-    files_with_times = [
-        (file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
-        for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")
-    ]
+    files_with_times = [(file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
+                        for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")]
+    
     if not files_with_times:
         return None, None
-    latest_file, latest_time = sorted(files_with_times, key=lambda x: x[1], reverse=True)[0]
-    return latest_file, latest_time
+    return sorted(files_with_times, key=lambda x: x[1], reverse=True)[0]
 
 def check_for_new_files(spark, hdfs_path):
-    """
-    Determines if the latest file in a directory was modified today or yesterday and meets naming criteria.
-    Also checks if this file has already been processed to prevent reprocessing.
-    """
-    processed_files = read_processed_files()
     latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
-    if latest_file is None or processed_files.get(latest_file):
-        print("No new files or file already processed.")
+    if not latest_file:
         return False
+    
     today = datetime.now().date()
     yesterday = today - timedelta(days=1)
-    if latest_mod_time.date() in [today, yesterday]:
-        processed_files[latest_file] = True
-        write_processed_files(processed_files)
-        print(f"New file detected: {latest_file}, modified at {latest_mod_time}")
+    file_date_is_valid = latest_mod_time.date() in [today, yesterday]
+    file_not_processed = not is_file_processed(latest_file)
+    
+    if file_date_is_valid and file_not_processed:
+        mark_file_as_processed(latest_file)
         return True
-    else:
-        print("No new files found today or yesterday.")
-        return False
+    return False
 
 def main():
-    """
-    Main execution function:
-    - Initializes a Spark session.
-    - Checks for new files using the defined criteria.
-    - Processes files if found, otherwise stops the job with an assertion failure.
-    """
     spark = SparkSession.builder.appName("Check New Files in HDFS with Criteria").getOrCreate()
-    hdfs_path = "hdfs:///path/to/your/directory"  # Adjust this to your actual HDFS directory
+    hdfs_path = "hdfs:///path/to/your/directory"
+    
     new_files_found = check_for_new_files(spark, hdfs_path)
-    assert new_files_found, "No new files meeting the criteria were found or already processed."
-    print("New files meeting the criteria found. Proceeding with the job...")
     spark.stop()
+    
+    assert new_files_found, "No new files meeting the criteria were found or file already processed."
 
 if __name__ == "__main__":
     main()
