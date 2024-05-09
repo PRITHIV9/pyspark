@@ -1,36 +1,46 @@
 import os
-from pyspark.sql import SparkSession
 from datetime import datetime, timedelta
+from pyspark.sql import SparkSession
 
-# Define paths and file handling functions
+# Define the path to the text file used for tracking processed files
 def get_processed_files_tracker_path():
+    """Return the file path for the processed files tracker."""
     return "/path/to/your/processed_files_tracker.txt"
 
+# Read the processed files from the text file
 def load_processed_files():
-    """Reads the text file that tracks processed files and returns a set of filenames."""
+    """Load processed files from a text file and return them as a set."""
     path = get_processed_files_tracker_path()
+    processed_files = set()
     if os.path.exists(path):
         with open(path, 'r') as file:
-            return set(file.read().splitlines())  # Read lines and create a set of filenames
-    return set()
+            processed_files = {line.strip() for line in file}
+    return processed_files
 
+# Save the updated list of processed files back to the text file
 def save_processed_files(processed_files):
-    """Writes the updated set of processed files back to the text file, each filename on a new line."""
+    """Save the set of processed files back to the text file."""
     path = get_processed_files_tracker_path()
     with open(path, 'w') as file:
-        file.write('\n'.join(processed_files))  # Join set into string with newline separator
+        for file_name in processed_files:
+            file.write(file_name + '\n')
 
-# File processing and checks
+# Check if a file has already been processed
 def is_file_processed(file_name):
+    """Check if the given file name is in the set of processed files."""
     processed_files = load_processed_files()
     return file_name in processed_files
 
+# Mark a file as processed in the text file
 def mark_file_as_processed(file_name):
+    """Mark a file as processed by adding it to the set and updating the file."""
     processed_files = load_processed_files()
     processed_files.add(file_name)
     save_processed_files(processed_files)
 
+# Get the latest file information from HDFS based on naming and modification time
 def get_latest_file_info(spark, hdfs_path):
+    """Retrieve the latest modified file that matches specific criteria from HDFS."""
     fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
     path = spark._jvm.org.apache.hadoop.fs.Path(hdfs_path)
     status = fs.listStatus(path)
@@ -38,30 +48,32 @@ def get_latest_file_info(spark, hdfs_path):
         (file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
         for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")
     ]
-    
     if not files_with_times:
-        return None, None
+        return None, None  # Return None if no files match
     return sorted(files_with_times, key=lambda x: x[1], reverse=True)[0]
 
+# Check for new files that haven't been processed
 def check_for_new_files(spark, hdfs_path):
+    """Check if there are any new files that have not been processed."""
     latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
     if not latest_file:
         return False
-
+    
     today = datetime.now().date()
     yesterday = today - timedelta(days=1)
     file_date_is_valid = latest_mod_time.date() in [today, yesterday]
     file_not_processed = not is_file_processed(latest_file)
-
+    
     if file_date_is_valid and file_not_processed:
         mark_file_as_processed(latest_file)
         return True
     return False
 
+# Main function to execute the job
 def main():
+    """Main function to orchestrate checking and processing of new files."""
     spark = SparkSession.builder.appName("Check New Files in HDFS with Criteria").getOrCreate()
     hdfs_path = "hdfs:///path/to/your/directory"
-    
     new_files_found = check_for_new_files(spark, hdfs_path)
     spark.stop()
     
