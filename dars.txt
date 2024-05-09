@@ -81,3 +81,52 @@ def main():
 
 if __name__ == "__main__":
     main()
+Hey team,
+
+I wanted to share an update on the automation script I've developed for handling new CB files that the Axway team uploads to our HDFS location. Here's a detailed walkthrough of how it's set up and functions:
+
+File Checking Mechanism: The script is designed to detect new files in our HDFS directory. It specifically checks for files named starting with '72648' and ending with '.csv', reflecting our standard naming convention.
+Timing and Frequency:
+The script is scheduled to run on the 12th, 13th, 14th, and 16th of each month for mid-month file checks.
+For end-of-month files, it runs from the 28th to the 1st of the next month.
+It uses cron jobs in CDSW to ensure timely execution.
+File Processing Criteria:
+Upon each run, the script first checks if the file was modified either today or yesterday, ensuring we're always processing the latest data.
+To avoid reprocessing the same file, it cross-references a text file where we track all previously processed files. This history check ensures that once a file is processed, it won’t be processed again, even if the script runs multiple times due to the cron scheduler.
+Failure Handling:
+If no new files are found that meet the criteria, or if the file has already been processed, the script will assert false to intentionally fail. This is crucial because it prevents the job from reporting success and triggering subsequent dependent processes unnecessarily.
+Subsequent Processes:
+When a new file is successfully identified and hasn’t been processed before, the script triggers downstream tasks which include creating Hive tables and executing SQL stored procedures to integrate the data into our SQL applications.
+I've implemented these controls to ensure robustness and accuracy in our data processing workflow, minimizing the risk of data duplication or missed files. Please review the logic and setup, and let me know if you think any adjustments or enhancements are needed. Your feedback is vital to ensure everything runs smoothly.
+
+Looking forward to your suggestions or approval to proceed with this setup.
+
+Subject: Out of Office Notification - [Your Name]
+
+Dear [Manager’s Name] and Team,
+
+I am writing to inform you that due to an urgent family emergency, I need to travel to my hometown and will be unavailable from tomorrow. I will be out of the office starting [date you are leaving] and will return on Monday, [date you are returning].
+
+During my absence, I have ensured that all urgent matters are addressed, and I have delegated my current tasks to [Colleague’s Name] to cover for me. [Colleague's Name] is well-informed about the projects I am handling and can be reached for any immediate assistance.
+
+For any urgent issues that might arise, please feel free to reach out to [Colleague’s Name] or contact me via email, and I will do my best to respond as soon as possible.
+
+Thank you for your understanding during this challenging time. I appreciate your support and look forward to resuming work on my return.
+
+Best regards,
+
+[Your Name]
+[Your Position]
+[Your Contact Information]
+
+This email is respectful and professional, clearly communicating your circumstances and the arrangements you've made to cover your responsibilities during your absence. Adjust the names, dates, and specific details as needed to fit your situation.
+
+
+
+
+
+
+Message ChatGPT
+
+
+ChatGPT can make mistakes. Consider checking important infor
