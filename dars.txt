@@ -1,3 +1,4 @@
+0 * 1,12-16,27-31 * *
 from pyspark.sql import SparkSession
 from datetime import datetime, timedelta
 import os
