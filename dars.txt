@@ -1,9 +1,30 @@
-from datetime import datetime, timedelta
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
+Pull Request: Mid-Month File Processing Implementation
+Current Implementation:
+This PR introduces a script that checks for new mid-month files in HDFS and tracks their processing status using a local text file. This method was chosen for its simplicity and because it does not require additional database permissions.
 
-# Assuming you have a function writetosql() already defined elsewhere
-from your_module import writetosql
+Benefits of Current Approach:
+
+Simplicity: Easy to implement and manage.
+No Database Dependency: Functional without modifications to the database.
+Proposed Enhancement for Future Consideration:
+Integrating this process with SQL Server could enhance data management capabilities. This would require:
+
+SQL Server Table: Creation of a ProcessedFiles table to log file processing.
+Database Permissions: Necessary rights to create and manage the table.
+Recommendation:
+While the text file approach is currently sufficient, transitioning to SQL Server tracking could provide robustness and integration benefits. This would require appropriate database permissions.
+
+Action:
+This PR is ready for review. Feedback is welcome to align it with our data management strategies and consider future enhancements.
+
+This version succinctly communicates the essential information while keeping the focus on actionable items and future considerations.
+import os
+from datetime import datetime, timedelta
+from pyspark.sql import SparkSession, functions as F
+
+# Define HDFS path and SQL Server parameters
+HDFS_PATH = "hdfs:///path/to/your/directory"
+DATABASE_TABLE = "ProcessedFiles"  # Assuming this is a table or a view available to Spark
 
 def get_latest_file_info(spark, hdfs_path):
     """Retrieve the latest modified file that matches specific criteria from HDFS."""
@@ -18,30 +39,38 @@ def get_latest_file_info(spark, hdfs_path):
         return None, None
     return sorted(files_with_times, key=lambda x: x[1], reverse=True)[0]
 
-def check_for_new_files(spark, hdfs_path, sql_connection_params):
-    """Check for new files and record their processing status in SQL Server."""
+def file_already_processed(spark, file_name):
+    """Check if the file has already been processed by querying the SQL table via Spark SQL."""
+    spark.sql(f"USE your_database_name")  # Specify your database name if necessary
+    processed_files_df = spark.sql(f"SELECT filename FROM {DATABASE_TABLE}")
+    return processed_files_df.filter(processed_files_df.filename == file_name).count() > 0
+
+def log_file_processed(spark, file_name):
+    """Log the processed file into the SQL Server database via DataFrame."""
+    df = spark.createDataFrame([(file_name, datetime.now())], ["filename", "processed_on"])
+    df.write.format("jdbc").option("url", "jdbc:sqlserver://yourserver").option("dbtable", f"{DATABASE_TABLE}").option("user", "username").option("password", "password").save()
+
+def check_for_new_files(spark, hdfs_path):
+    """Check for new files and process them if they haven't been processed."""
     latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
     if not latest_file:
         return False
-    
-    df = spark.read.format("csv").option("header", "true").load(latest_file)
-    processed_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df = df.withColumn("Filename", F.lit(latest_file))
-    df = df.withColumn("ProcessedOn", F.lit(processed_on))
 
-    writetosql(df, "ProcessedFilesLog", "dbo", "SQL_SERVER", sql_connection_params)
-    return True
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    if latest_mod_time.date() in [today, yesterday] and not file_already_processed(spark, latest_file):
+        log_file_processed(spark, latest_file)
+        return True
+    return False
 
 def main():
-    """Orchestrate the checking and logging of new files."""
-    spark = SparkSession.builder.appName("Check New Files in HDFS with Criteria").getOrCreate()
-    hdfs_path = "hdfs:///path/to/your/directory"
-    sql_connection_params = {"url": "jdbc:sqlserver://server:port", "dbtable": "table", "user": "user", "password": "password"}
-    
-    new_files_found = check_for_new_files(spark, hdfs_path, sql_connection_params)
+    """Main function orchestrating the file checking and logging."""
+    spark = SparkSession.builder.appName("File Processing with SQL Tracking").getOrCreate()
+    if not check_for_new_files(spark, HDFS_PATH):
+        spark.stop()
+        assert False, "No new files meeting the criteria were found or file already processed."
     spark.stop()
-    
-    assert new_files_found, "No new files meeting the criteria were found or file already processed."
+    print("File processing completed successfully.")
 
 if __name__ == "__main__":
     main()
