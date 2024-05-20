@@ -1,76 +1,81 @@
-Pull Request: Mid-Month File Processing Implementation
-Current Implementation:
-This PR introduces a script that checks for new mid-month files in HDFS and tracks their processing status using a local text file. This method was chosen for its simplicity and because it does not require additional database permissions.
+import pytest
 
-Benefits of Current Approach:
+@pytest.fixture(scope="module")
+def session():
+    session = get_snowpark_session()
+    yield session
+    session.close()
 
-Simplicity: Easy to implement and manage.
-No Database Dependency: Functional without modifications to the database.
-Proposed Enhancement for Future Consideration:
-Integrating this process with SQL Server could enhance data management capabilities. This would require:
-
-SQL Server Table: Creation of a ProcessedFiles table to log file processing.
-Database Permissions: Necessary rights to create and manage the table.
-Recommendation:
-While the text file approach is currently sufficient, transitioning to SQL Server tracking could provide robustness and integration benefits. This would require appropriate database permissions.
-
-Action:
-This PR is ready for review. Feedback is welcome to align it with our data management strategies and consider future enhancements.
-
-This version succinctly communicates the essential information while keeping the focus on actionable items and future considerations.
-import os
-from datetime import datetime, timedelta
-from pyspark.sql import SparkSession, functions as F
-
-# Define HDFS path and SQL Server parameters
-HDFS_PATH = "hdfs:///path/to/your/directory"
-DATABASE_TABLE = "ProcessedFiles"  # Assuming this is a table or a view available to Spark
-
-def get_latest_file_info(spark, hdfs_path):
-    """Retrieve the latest modified file that matches specific criteria from HDFS."""
-    fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
-    path = spark._jvm.org.apache.hadoop.fs.Path(hdfs_path)
-    status = fs.listStatus(path)
-    files_with_times = [
-        (file.getPath().toString(), datetime.fromtimestamp(file.getModificationTime() / 1000))
-        for file in status if file.getPath().getName().startswith("72648") and file.getPath().getName().lower().endswith(".csv")
+def test_create_table(session):
+    # Create the table
+    create_table(session)
+    
+    # Check if the table exists
+    result = session.sql("SHOW TABLES LIKE 'test_table'").collect()
+    assert len(result) == 1, "Table 'test_table' was not created."
+    
+    # Verify the schema of the table
+    table_info = session.sql("DESCRIBE TABLE test_table").collect()
+    expected_schema = [
+        ("ID", "NUMBER", "NULLABLE"),
+        ("NAME", "TEXT", "NULLABLE"),
+        ("CREATED_AT", "TIMESTAMP_NTZ", "NULLABLE")
     ]
-    if not files_with_times:
-        return None, None
-    return sorted(files_with_times, key=lambda x: x[1], reverse=True)[0]
+    
+    for idx, column in enumerate(expected_schema):
+        assert table_info[idx].name == column[0], f"Column {idx + 1} name mismatch."
+        assert table_info[idx].type == column[1], f"Column {idx + 1} type mismatch."
+        assert table_info[idx].null == column[2], f"Column {idx + 1} nullability mismatch."
 
-def file_already_processed(spark, file_name):
-    """Check if the file has already been processed by querying the SQL table via Spark SQL."""
-    spark.sql(f"USE your_database_name")  # Specify your database name if necessary
-    processed_files_df = spark.sql(f"SELECT filename FROM {DATABASE_TABLE}")
-    return processed_files_df.filter(processed_files_df.filename == file_name).count() > 0
 
-def log_file_processed(spark, file_name):
-    """Log the processed file into the SQL Server database via DataFrame."""
-    df = spark.createDataFrame([(file_name, datetime.now())], ["filename", "processed_on"])
-    df.write.format("jdbc").option("url", "jdbc:sqlserver://yourserver").option("dbtable", f"{DATABASE_TABLE}").option("user", "username").option("password", "password").save()
+# create_table.py
 
-def check_for_new_files(spark, hdfs_path):
-    """Check for new files and process them if they haven't been processed."""
-    latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
-    if not latest_file:
-        return False
+def create_table(session):
+    session.sql("""
+        CREATE OR REPLACE TABLE test_table (
+            id INTEGER,
+            name STRING,
+            created_at TIMESTAMP
+        )
+    """).collect()
 
-    today = datetime.now().date()
-    yesterday = today - timedelta(days=1)
-    if latest_mod_time.date() in [today, yesterday] and not file_already_processed(spark, latest_file):
-        log_file_processed(spark, latest_file)
-        return True
-    return False
+# test_create_table.py
 
-def main():
-    """Main function orchestrating the file checking and logging."""
-    spark = SparkSession.builder.appName("File Processing with SQL Tracking").getOrCreate()
-    if not check_for_new_files(spark, HDFS_PATH):
-        spark.stop()
-        assert False, "No new files meeting the criteria were found or file already processed."
-    spark.stop()
-    print("File processing completed successfully.")
+import unittest
+from snowflake.snowpark import Session
+from snowpark_session import get_snowpark_session
+from create_table import create_table
 
-if __name__ == "__main__":
-    main()
+class TestCreateTable(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.session = get_snowpark_session()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.session.close()
+
+    def test_create_table(self):
+        # Create the table
+        create_table(self.session)
+        
+        # Check if the table exists
+        result = self.session.sql("SHOW TABLES LIKE 'test_table'").collect()
+        self.assertEqual(len(result), 1, "Table 'test_table' was not created.")
+        
+        # Verify the schema of the table
+        table_info = self.session.sql("DESCRIBE TABLE test_table").collect()
+        expected_schema = [
+            ("ID", "NUMBER", "NULLABLE"),
+            ("NAME", "TEXT", "NULLABLE"),
+            ("CREATED_AT", "TIMESTAMP_NTZ", "NULLABLE")
+        ]
+        
+        for idx, column in enumerate(expected_schema):
+            self.assertEqual(table_info[idx].name, column[0], f"Column {idx + 1} name mismatch.")
+            self.assertEqual(table_info[idx].type, column[1], f"Column {idx + 1} type mismatch.")
+            self.assertEqual(table_info[idx].null, column[2], f"Column {idx + 1} nullability mismatch.")
+
+if __name__ == '__main__':
+    unittest.main()
