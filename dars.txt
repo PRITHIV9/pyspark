@@ -1,81 +1,13 @@
-import pytest
+Subject: Confirmation Needed: Target Location for File Loading in DM_comm_analytics
 
-@pytest.fixture(scope="module")
-def session():
-    session = get_snowpark_session()
-    yield session
-    session.close()
+Hi [Scrum Master's Name] and [Data Manager's Name],
 
-def test_create_table(session):
-    # Create the table
-    create_table(session)
-    
-    # Check if the table exists
-    result = session.sql("SHOW TABLES LIKE 'test_table'").collect()
-    assert len(result) == 1, "Table 'test_table' was not created."
-    
-    # Verify the schema of the table
-    table_info = session.sql("DESCRIBE TABLE test_table").collect()
-    expected_schema = [
-        ("ID", "NUMBER", "NULLABLE"),
-        ("NAME", "TEXT", "NULLABLE"),
-        ("CREATED_AT", "TIMESTAMP_NTZ", "NULLABLE")
-    ]
-    
-    for idx, column in enumerate(expected_schema):
-        assert table_info[idx].name == column[0], f"Column {idx + 1} name mismatch."
-        assert table_info[idx].type == column[1], f"Column {idx + 1} type mismatch."
-        assert table_info[idx].null == column[2], f"Column {idx + 1} nullability mismatch."
+I hope this message finds you well.
 
+I need to create a ServiceNow ticket to set up a subfolder in DM_comm_analytics with the same folder structure as sb-dsp, as sb-dsp will be decommissioned in November 2024. The Axway team is asking for the target location to load the files.
 
-# create_table.py
+Currently, we are loading files under sb-dsp/data/L1. Are we planning to use the same folder structure in DM_comm_analytics, or will we adopt a different structure? Please let me know so I can proceed accordingly.
 
-def create_table(session):
-    session.sql("""
-        CREATE OR REPLACE TABLE test_table (
-            id INTEGER,
-            name STRING,
-            created_at TIMESTAMP
-        )
-    """).collect()
+Thank you,
+[Your Name]
 
-# test_create_table.py
-
-import unittest
-from snowflake.snowpark import Session
-from snowpark_session import get_snowpark_session
-from create_table import create_table
-
-class TestCreateTable(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.session = get_snowpark_session()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.session.close()
-
-    def test_create_table(self):
-        # Create the table
-        create_table(self.session)
-        
-        # Check if the table exists
-        result = self.session.sql("SHOW TABLES LIKE 'test_table'").collect()
-        self.assertEqual(len(result), 1, "Table 'test_table' was not created.")
-        
-        # Verify the schema of the table
-        table_info = self.session.sql("DESCRIBE TABLE test_table").collect()
-        expected_schema = [
-            ("ID", "NUMBER", "NULLABLE"),
-            ("NAME", "TEXT", "NULLABLE"),
-            ("CREATED_AT", "TIMESTAMP_NTZ", "NULLABLE")
-        ]
-        
-        for idx, column in enumerate(expected_schema):
-            self.assertEqual(table_info[idx].name, column[0], f"Column {idx + 1} name mismatch.")
-            self.assertEqual(table_info[idx].type, column[1], f"Column {idx + 1} type mismatch.")
-            self.assertEqual(table_info[idx].null, column[2], f"Column {idx + 1} nullability mismatch.")
-
-if __name__ == '__main__':
-    unittest.main()
