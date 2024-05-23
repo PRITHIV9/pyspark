@@ -1,13 +1,179 @@
-Subject: Confirmation Needed: Target Location for File Loading in DM_comm_analytics
+import os
+from datetime import datetime, timedelta
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 
-Hi [Scrum Master's Name] and [Data Manager's Name],
+# Assuming these functions are provided in your utilities module
+from utils import readFromHDFS, writeToHive
 
-I hope this message finds you well.
+def get_tracking_table_name():
+    """Returns the Hive table name used for tracking processed files."""
+    return "processed_files_tracking"
 
-I need to create a ServiceNow ticket to set up a subfolder in DM_comm_analytics with the same folder structure as sb-dsp, as sb-dsp will be decommissioned in November 2024. The Axway team is asking for the target location to load the files.
+def is_file_processed(spark, file_name):
+    """Check if the given file name has been processed by querying the Hive table."""
+    df = readFromHDFS(get_tracking_table_name(), "default", "prod")  # Adjust schema and environment as necessary
+    return df.filter(col("filename") == file_name).count() > 0
 
-Currently, we are loading files under sb-dsp/data/L1. Are we planning to use the same folder structure in DM_comm_analytics, or will we adopt a different structure? Please let me know so I can proceed accordingly.
+def mark_file_as_processed(spark, file_name):
+    """Marks a file as processed by adding it to the Hive tracking table."""
+    from pyspark.sql import Row
+    processed_df = spark.createDataFrame([Row(filename=file_name, processed_on=datetime.now().date())])
+    writeToHive(processed_df, get_tracking_table_name(), "default", "prod", append=True)
 
-Thank you,
-[Your Name]
+def get_latest_file_info(spark, hdfs_path):
+    """Retrieve the latest modified file that matches specific criteria from HDFS."""
+    df = readFromHDFS(hdfs_path, "default", "prod")  # Modify this based on actual utility function
+    if df.count() == 0:
+        return None, None
+    latest_row = df.orderBy(col("modification_time").desc()).first()
+    return latest_row.filename, latest_row.modification_time
 
+def check_for_new_files(spark, hdfs_path):
+    """Check if there are any new files that have not been processed."""
+    latest_file, latest_mod_time = get_latest_file_info(spark, hdfs_path)
+    if not latest_file:
+        return False
+    
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    file_date_is_valid = latest_mod_time.date() in [today, yesterday]
+    file_not_processed = not is_file_processed(spark, latest_file)
+    
+    if file_date_is_valid and file_not_processed:
+        mark_file_as_processed(spark, latest_file)
+        return True
+    return False
+
+def main():
+    """Main function orchestrating the file checking and processing."""
+    spark = SparkSession.builder.appName("File Processing with HDFS and Hive").getOrCreate()
+    hdfs_path = "hdfs:///path/to/your/directory"
+    new_files_found = check_for_new_files(spark, hdfs_path)
+    spark.stop()
+    
+    # Asserts false if no new files are found or if they're already processed, causing job to fail intentionally
+    assert new_files_found, "No new files meeting the criteria were found or file already processed."
+
+if __name__ == "__main__":
+    main()
+import unittest
+from unittest.mock import patch, MagicMock
+from datetime import datetime, timedelta
+
+# Assuming your main script is named 'file_processor.py' and includes the functions:
+# - is_file_processed
+# - mark_file_as_processed
+# - get_latest_file_info
+# - check_for_new_files
+from file_processor import is_file_processed, mark_file_as_processed, get_latest_file_info, check_for_new_files
+
+class TestFileProcessing(unittest.TestCase):
+
+    def setUp(self):
+        """Create a Spark session for testing."""
+        from pyspark.sql import SparkSession
+        self.spark = SparkSession.builder.master("local[1]").appName("Spark Testing").getOrCreate()
+
+    def tearDown(self):
+        """Stop the Spark session."""
+        self.spark.stop()
+
+    @patch('file_processor.readFromHDFS')
+    def test_is_file_processed(self, mock_read):
+        """Test the is_file_processed function."""
+        # Setup the mock to return a DataFrame with one matching filename
+        df = self.spark.createDataFrame([("processed_file.csv", datetime.now().date())], ["filename", "processed_on"])
+        mock_read.return_value = df
+
+        result = is_file_processed(self.spark, "processed_file.csv")
+        self.assertTrue(result)
+
+        result = is_file_processed(self.spark, "new_file.csv")
+        self.assertFalse(result)
+
+    @patch('file_processor.writeToHive')
+    def test_mark_file_as_processed(self, mock_write):
+        """Test the mark_file_as_processed function ensures writeToHive is called."""
+        mark_file_as_processed(self.spark, "new_file.csv")
+        # Check if writeToHive is called once
+        mock_write.assert_called_once()
+
+    @patch('file_processor.readFromHDFS')
+    def test_get_latest_file_info(self, mock_read):
+        """Test that get_latest_file_info returns correct file information."""
+        df = self.spark.createDataFrame([
+            ("file1.csv", datetime.now() - timedelta(days=1)),
+            ("file2.csv", datetime.now())
+        ], ["filename", "modification_time"])
+        mock_read.return_value = df.orderBy("modification_time", ascending=False)
+
+        filename, mod_time = get_latest_file_info(self.spark, "hdfs_path")
+        self.assertEqual(filename, "file2.csv")
+        self.assertTrue(mod_time.date() == datetime.now().date())
+
+    @patch('file_processor.is_file_processed')
+    @patch('file_processor.get_latest_file_info')
+    @patch('file_processor.mark_file_as_processed')
+    def test_check_for_new_files(self, mock_mark, mock_info, mock_processed):
+        """Test check_for_new_files logic under various conditions."""
+        # Setup for a file that exists and is not processed
+        mock_info.return_value = ("new_file.csv", datetime.now())
+        mock_processed.return_value = False
+        self.assertTrue(check_for_new_files(self.spark, "hdfs_path"))
+        mock_mark.assert_called_once_with(self.spark, "new_file.csv")
+
+        # Setup for no new file found
+        mock_info.return_value = (None, None)
+        self.assertFalse(check_for_new_files(self.spark, "hdfs_path"))
+
+if __name__ == '__main__':
+    unittest.main()
+# config.yaml
+database_config:
+  database_name: "default"
+  table_name: "processed_files_tracking"
+  environment: "prod"
+  schema:
+    - field_name: "filename"
+      field_type: "STRING"
+    - field_name: "processed_on"
+      field_type: "DATE"
+import yaml
+import os
+from datetime import datetime, timedelta
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+def load_config():
+    """Load YAML configuration file."""
+    with open('config.yaml', 'r') as file:
+        return yaml.safe_load(file)
+
+config = load_config()
+
+def get_tracking_table_name():
+    """Returns the Hive table name from the YAML configuration."""
+    return config['database_config']['table_name']
+
+def is_file_processed(spark, file_name):
+    """Check if the given file name has been processed by querying the Hive table."""
+    table_name = get_tracking_table_name()
+    df = readFromHDFS(table_name, config['database_config']['database_name'], config['database_config']['environment'])
+    return df.filter(col("filename") == file_name).count() > 0
+
+def mark_file_as_processed(spark, file_name):
+    """Marks a file as processed by adding it to the Hive tracking table."""
+    from pyspark.sql import Row
+    table_name = get_tracking_table_name()
+    processed_df = spark.createDataFrame([Row(filename=file_name, processed_on=datetime.now().date())])
+    writeToHive(processed_df, table_name, config['database_config']['database_name'], config['database_config']['environment'], append=True)
+
+# Remaining functions and main block would be similarly updated to use config
+
+if __name__ == "__main__":
+    spark = SparkSession.builder.appName("File Processing with HDFS and Hive").getOrCreate()
+    hdfs_path = "hdfs:///path/to/your/directory"
+    new_files_found = check_for_new_files(spark, hdfs_path)
+    spark.stop()
+    assert new_files_found, "No new files meeting the criteria were found or file already processed."
