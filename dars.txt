@@ -1,75 +1,81 @@
+from datetime import datetime, timedelta
+from optimal_config import generate_spark_instance
+
+def check_file_processed(spark, file_name):
+    """Check if the given file name has been processed by querying the Hive table."""
+    df = spark.sql(f"SELECT count(*) as count FROM processed_files_tracking WHERE file_name = '{file_name}'")
+    return df.collect()[0]['count'] > 0
+
+def mark_file_as_processed(spark, file_name):
+    """Mark a file as processed by adding it to the Hive tracking table."""
+    processed_on = datetime.now()
+    spark.sql(f"INSERT INTO processed_files_tracking VALUES ('{file_name}', '{processed_on}')")
+
+def check_for_new_files(spark, file_name):
+    """Check if there are any new files that have not been processed."""
+    today = datetime.now().date()
+    file_date_is_valid = today.strftime('%Y%m%d') in file_name  # Assuming filename contains the date
+    file_not_processed = not check_file_processed(spark, file_name)
+
+    if file_date_is_valid and file_not_processed:
+        mark_file_as_processed(spark, file_name)
+        return True
+    return False
+
+def main():
+    spark = generate_spark_instance(1, 100)
+    file_name = "72648_20230501_testfile.csv"  # Example file name for May 1st, 2023
+    new_files_found = check_for_new_files(spark, file_name)
+    spark.stop()
+
+    assert new_files_found, "No new files meeting the criteria were found or file already processed."
+
+if __name__ == "__main__":
+    main()
+
 import unittest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timedelta
-from your_script import check_file_processed, mark_file_as_processed, check_for_new_files, get_latest_file_info
+from your_main_script import check_file_processed, mark_file_as_processed, check_for_new_files
 
 class TestFileProcessing(unittest.TestCase):
     def setUp(self):
-        # Set up mock Spark session and other components
         self.spark = MagicMock()
-        self.hdfs_path = "hdfs:///path/to/your/directory"
-        self.file_name = "72648_testfile.csv"
-        self.today = datetime.now().date()
-        self.yesterday = self.today - timedelta(days=1)
+        self.file_name = "72648_20230501_testfile.csv"
 
-    @patch('your_script.spark.sql')
-    def test_check_file_processed(self, mock_sql):
-        # Set up the DataFrame mock to simulate Spark SQL behavior
-        df_mock = MagicMock()
-        df_mock.count.return_value = 1
-        mock_sql.return_value = df_mock
+    @patch('your_main_script.check_file_processed')
+    @patch('your_main_script.mark_file_as_processed')
+    def test_check_for_new_files(self, mock_mark, mock_check):
+        # Setup
+        mock_check.return_value = False
+
+        # Invocation
+        result = check_for_new_files(self.spark, self.file_name)
+
+        # Check
+        self.assertTrue(result)
+        mock_mark.assert_called_once_with(self.spark, self.file_name)
+        mock_check.assert_called_once_with(self.spark, self.file_name)
+
+    def test_check_file_processed(self):
+        # Setup
+        self.spark.sql.return_value.collect.return_value = [{'count': 1}]
 
         # Invocation
         result = check_file_processed(self.spark, self.file_name)
 
         # Check
         self.assertTrue(result)
-        mock_sql.assert_called_with(f"SELECT * FROM processed_files_tracking WHERE file_name = '{self.file_name}'")
+        self.spark.sql.assert_called_with(f"SELECT count(*) as count FROM processed_files_tracking WHERE file_name = '{self.file_name}'")
 
-    @patch('your_script.spark.sql')
-    def test_mark_file_as_processed(self, mock_sql):
-        # Set up the function to not raise any exceptions
-        mock_sql.return_value = None
+    def test_mark_file_as_processed(self):
+        # Setup
+        self.spark.sql = MagicMock()
 
         # Invocation
         mark_file_as_processed(self.spark, self.file_name)
 
         # Check
-        mock_sql.assert_called()
-
-    @patch('your_script.get_latest_file_info')
-    @patch('your_script.check_file_processed')
-    @patch('your_script.mark_file_as_processed')
-    def test_check_for_new_files(self, mock_mark, mock_check, mock_latest_info):
-        # Setup
-        mock_latest_info.return_value = (self.file_name, datetime.now())
-        mock_check.return_value = False
-
-        # Invocation
-        result = check_for_new_files(self.spark, self.hdfs_path)
-
-        # Check
-        self.assertTrue(result)
-        mock_mark.assert_called_once_with(self.spark, self.file_name)
-        mock_latest_info.assert_called_once_with(self.spark, self.hdfs_path)
-
-    @patch('your_script.spark._jvm.org.apache.hadoop.fs.FileSystem.get')
-    def test_get_latest_file_info(self, mock_fs_get):
-        # Setup the FileSystem mock to simulate HDFS file listing
-        mock_status = MagicMock()
-        mock_path = MagicMock()
-        mock_path.getName.return_value = "72648_testfile.csv"
-        mock_path.toString.return_value = "hdfs:///path/to/your/directory/72648_testfile.csv"
-        mock_status.getPath.return_value = mock_path
-        mock_status.getModificationTime.return_value = int((datetime.now() - timedelta(hours=1)).timestamp() * 1000)
-        mock_fs_get.return_value.listStatus.return_value = [mock_status]
-
-        # Invocation
-        file_name, mod_time = get_latest_file_info(self.spark, self.hdfs_path)
-
-        # Check
-        self.assertEqual(file_name, "72648_testfile.csv")
-        self.assertIsNotNone(mod_time)
+        self.spark.sql.assert_called()
 
 if __name__ == '__main__':
     unittest.main()
