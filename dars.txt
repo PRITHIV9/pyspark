@@ -2,15 +2,14 @@ import unittest
 from datetime import datetime, timedelta
 from pyspark.sql import Row
 from optimal_config.create_spark_instance import generate_spark_instance
-from your_module import check_file_processed, mark_file_as_processed, get_latest_file_info, check_for_new_files, main
+from your_module import check_file_processed, mark_file_as_processed, get_latest_file_info, check_for_new_files, main, create_variables, write_to_hive
 
 class TestFileProcessing(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Set up a Spark instance for testing
         cls.spark = generate_spark_instance(100, 1)
-        cls.schema = "test_schema"
-        cls.schemafromyaml = "test_schemafromyaml"
+        cls.schema, cls.schemafromyaml = create_variables()
         cls.hdfs_path = "hdfs:///path/to/your/directory"
         
         # Create a test DataFrame and write it to Hive
