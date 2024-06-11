@@ -1,4 +1,4 @@
-What Went Well:
+What Went Well:Automated the client rating process with external rating agencies, streamlining critical tasks such as file retrieval, HDFS table creation, and SQL table updates using GitHub Actions workflows. This significantly reduced manual intervention and improved process efficiency
 
 Automated the manual client rating process with external rating agencies, integrating file fetching, HDFS uploads, and Python script execution.
 Reduced storage space by optimizing Hive table loads with partitioning, significantly enhancing data processing efficiency.
