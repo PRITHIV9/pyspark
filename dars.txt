@@ -1,32 +1,3 @@
-What Went Well:Automated the client rating process with external rating agencies, streamlining critical tasks such as file retrieval, HDFS table creation, and SQL table updates using GitHub Actions workflows. This significantly reduced manual intervention and improved process efficiency
-
-Automated the manual client rating process with external rating agencies, integrating file fetching, HDFS uploads, and Python script execution.
-Reduced storage space by optimizing Hive table loads with partitioning, significantly enhancing data processing efficiency.
-What Could Have Been Done Better:
-
-Could have involved the client manager and data product owners earlier in the automation project to gather comprehensive requirements and feedback.
-Improved documentation and training materials for the new automated processes to facilitate smoother adoption.
-Support from Leads:
-
-More frequent check-ins and feedback sessions to align on project goals and address challenges promptly.
-Additional resources or team members to help accelerate the automation initiatives.
-Future Goals:
-
-Pursue Snowflake certification to align with the team’s migration to Snowflake.
-Enhance the documentation to support the new processes.
-Focus on optimizing more code, though the current approval process (RFC) is time-consuming.
-Summary:
-
-It's been a valuable experience working in the ODC, gaining insights from data analysts and data scientists, and understanding the broader data lake app development process.
-Despite the challenges, the automation and optimization projects have significantly reduced manual efforts and improved data processing timelines, setting a strong foundation for future enhancements.
-
-
-
-
-
-
-
-
-
-
-ChatGPT can make mistakes. Check important inf
+git log
+git reset --hard abc1234
+git push --force origin feature-branch
