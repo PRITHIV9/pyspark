@@ -1,3 +1,9 @@
-git log
-git reset --hard abc1234
-git push --force origin feature-branch
+Subject: Assistance Required: Identifying SailPoint Group for Access to [Table Name]
+
+Hi [Recipient's Name or Team],
+
+I hope you are well.
+
+I am currently encountering a privileged access error when trying to access the [Table Name] table. To resolve this, I need to request the appropriate permissions through SailPoint.
+
+Could you please guide me on which SailPoint group I need to request access to in order to gain the necessary permissions for this table? If there is any additional information required from my side, please let me know.
