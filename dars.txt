@@ -1,8 +1,12 @@
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
 
-# Initialize SparkSession
-spark = SparkSession.builder.appName("OptimizeCount").getOrCreate()
+# Initialize SparkSession with desired configurations
+spark = SparkSession.builder \
+    .appName("OptimizeCount") \
+    .config("spark.executor.memory", "600G") \
+    .config("spark.executor.cores", "40") \
+    .config("spark.executor.instances", "1") \
+    .getOrCreate()
 
 # Sample DataFrame (replace with actual data)
 data = [
@@ -26,30 +30,21 @@ print(f"Approximate DataFrame size: {df_size_mb} MB")
 
 # Check the cluster configuration
 sc = spark.sparkContext
-num_executors = int(sc._conf.get("spark.executor.instances", '1'))
-executor_memory = sc._conf.get("spark.executor.memory")
-executor_cores = int(sc._conf.get("spark.executor.cores", '1'))
-total_cores = num_executors * executor_cores
 
-print(f"Number of executors: {num_executors}")
+# Verify configurations
+executor_memory = sc._conf.get("spark.executor.memory")
+executor_cores = sc._conf.get("spark.executor.cores")
+num_executors = sc._conf.get("spark.executor.instances")
+
 print(f"Executor memory: {executor_memory}")
 print(f"Executor cores: {executor_cores}")
-print(f"Total available cores: {total_cores}")
+print(f"Number of executors: {num_executors}")
 
 # Specify the number of partitions
-num_partitions = total_cores * 2  # Adjust this based on your data size and cluster resources
+num_partitions = 10  # Adjust this based on your data size and cluster resources
 
 # Repartition the DataFrame based on the 'endofmonth' column and specified number of partitions
 df = df.repartition(num_partitions, "endofmonth")
-
-# Aggregate to get the distinct count of 'endofmonth' using approximate method
-distinct_endofmonth_count = df.select(F.approx_count_distinct("endofmonth")).collect()[0][0]
-
-# Assert the count
-assert abs(distinct_endofmonth_count - months) <= 1  # Adjust tolerance as needed
-
-# Optionally, unpersist the DataFrame if no longer needed
-df.unpersist()
 
 # Stop the SparkSession
 spark.stop()
