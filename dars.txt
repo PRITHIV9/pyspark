@@ -1,9 +1,33 @@
-Subject: Assistance Required: Identifying SailPoint Group for Access to [Table Name]
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
-Hi [Recipient's Name or Team],
+# Initialize SparkSession
+spark = SparkSession.builder.appName("OptimizeCount").getOrCreate()
 
-I hope you are well.
+# Sample DataFrame (replace with actual data)
+data = [
+    ("2023-01-31",), ("2023-02-28",), ("2023-03-31",), 
+    # Add more sample data as needed
+]
+df = spark.createDataFrame(data, ["endofmonth"])
 
-I am currently encountering a privileged access error when trying to access the [Table Name] table. To resolve this, I need to request the appropriate permissions through SailPoint.
+# Number of months expected
+months = 30
 
-Could you please guide me on which SailPoint group I need to request access to in order to gain the necessary permissions for this table? If there is any additional information required from my side, please let me know.
+# Cache the DataFrame to optimize multiple operations
+df.cache()
+
+# Repartition the DataFrame based on the 'endofmonth' column
+df = df.repartition("endofmonth")
+
+# Aggregate to get the distinct count of 'endofmonth'
+distinct_endofmonth_count = df.select("endofmonth").agg(F.countDistinct("endofmonth")).collect()[0][0]
+
+# Assert the count
+assert distinct_endofmonth_count == months
+
+# Optionally, unpersist the DataFrame if no longer needed
+df.unpersist()
+
+# Stop the SparkSession
+spark.stop()
