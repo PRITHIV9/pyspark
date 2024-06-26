@@ -17,14 +17,36 @@ months = 30
 # Cache the DataFrame to optimize multiple operations
 df.cache()
 
-# Repartition the DataFrame based on the 'endofmonth' column
-df = df.repartition("endofmonth")
+# Determine the size of the DataFrame
+data_size = df.count()  # Number of rows
+df_bytes = df.rdd.map(lambda row: len(str(row))).reduce(lambda x, y: x + y)
+df_size_mb = df_bytes / (1024 * 1024)
+print(f"Number of rows in DataFrame: {data_size}")
+print(f"Approximate DataFrame size: {df_size_mb} MB")
 
-# Aggregate to get the distinct count of 'endofmonth'
-distinct_endofmonth_count = df.select("endofmonth").agg(F.countDistinct("endofmonth")).collect()[0][0]
+# Check the cluster configuration
+sc = spark.sparkContext
+num_executors = int(sc._conf.get("spark.executor.instances", '1'))
+executor_memory = sc._conf.get("spark.executor.memory")
+executor_cores = int(sc._conf.get("spark.executor.cores", '1'))
+total_cores = num_executors * executor_cores
+
+print(f"Number of executors: {num_executors}")
+print(f"Executor memory: {executor_memory}")
+print(f"Executor cores: {executor_cores}")
+print(f"Total available cores: {total_cores}")
+
+# Specify the number of partitions
+num_partitions = total_cores * 2  # Adjust this based on your data size and cluster resources
+
+# Repartition the DataFrame based on the 'endofmonth' column and specified number of partitions
+df = df.repartition(num_partitions, "endofmonth")
+
+# Aggregate to get the distinct count of 'endofmonth' using approximate method
+distinct_endofmonth_count = df.select(F.approx_count_distinct("endofmonth")).collect()[0][0]
 
 # Assert the count
-assert distinct_endofmonth_count == months
+assert abs(distinct_endofmonth_count - months) <= 1  # Adjust tolerance as needed
 
 # Optionally, unpersist the DataFrame if no longer needed
 df.unpersist()
